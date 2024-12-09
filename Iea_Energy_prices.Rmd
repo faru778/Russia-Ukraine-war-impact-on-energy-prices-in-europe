@@ -1,0 +1,178 @@
+---
+title: "The Impact of Russia Ukraine conflict on the oil Prices in Europe."
+author: "Farman Karim"
+date: "2024-01-19"
+output: html_document
+---
+
+```{r include=FALSE}
+library(tidyr)
+library(dplyr)
+library(tidyselect)
+library(readxl)
+library(plm)
+library(ggplot2)
+library(tidyverse)
+install.packages('readxl')
+```
+
+```{r setup, include=FALSE}
+Diesel_data <- read_excel("/home/faru/R/project/Diesel_data.xlsx")
+View(Diesel_data)
+names(Diesel_data)
+```
+
+```{r}
+names(Diesel_data)[names(Diesel_data) == "VALUE"] <- "PRICE"
+names(Diesel_data)[names(Diesel_data) == "TIME"] <- "DATE"
+```
+
+```{r}
+Diesel_data <- subset(Diesel_data, select = -c(PRODUCT, FLOW, UNIT))
+colnames(Diesel_data)
+```
+
+```{r}
+Diesel_data$DATE <- as.Date(Diesel_data$DATE)
+Diesel_data$PRICE <- as.numeric(gsub("[^0-9.]", "", Diesel_data$PRICE))
+war_start_date <- as.Date("2022-02-01")
+
+
+```
+
+Diesel_data\$DATE \<- as.Date(Diesel_data\$DATE)
+
+```{r}
+Diesel_data$Log_price = log(Diesel_data$PRICE)
+Diesel_data$Log_price <- as.numeric(gsub("[^0-9.]", "", Diesel_data$Log_price))
+colnames(Diesel_data)
+```
+
+```{r}
+russia_neighbors <- c("Estonia", "Finland", "Hungary", "Lithuania", "Poland", "Slovak Republic")
+Diesel_data$NEIGHBORS = ifelse (Diesel_data$COUNTRY %in% russia_neighbors, 1, 0)
+
+```
+
+```{r}
+Diesel_data$INVASION = ifelse (war_start_date > Diesel_data$DATE, 0, 1)
+```
+
+```{r}
+
+# interaction dummy variable 
+Diesel_data$INTERACTION <- Diesel_data$NEIGHBORS * Diesel_data$INVASION
+names(Diesel_data)
+```
+
+```{r}
+before_invasion_data <- Diesel_data[Diesel_data$INVASION == 0, ]
+summary(before_invasion_data$Log_price)
+```
+
+```{r}
+after_invasion_data <- Diesel_data[Diesel_data$INVASION == 1, ]
+summary(after_invasion_data$Log_price)
+
+```
+
+```{r}
+by(Diesel_data$Log_price, list(Diesel_data$INVASION, Diesel_data$NEIGHBORS), summary)
+
+```
+
+```{r}
+ggplot(Diesel_data, aes(x = DATE, y = Log_price, color = COUNTRY)) +
+  geom_line() +
+  scale_x_date(date_breaks = "12 months", date_labels = "%b, %Y") +
+  facet_wrap(~COUNTRY, scales = "free_y", ncol = 4) +
+  labs(title = "Oil Prices Before and After Russia-Ukraine War",
+       x = "Date", y = "Oil Price") +
+  theme_minimal()
+```
+
+```{r}
+Diesel_data %>%
+  ggplot(aes(x = DATE, y = Log_price, color = COUNTRY)) +
+    labs(x = "Date", y = "Oil Prices")+
+  geom_line() +
+  theme_minimal()
+
+```
+
+```{r}
+selected_countries <- c("Netherlands ", "Belgium", "Portugal", "Luxembourg ", "France", 
+                        "Germany","Estonia", "Finland", "Lithuania","Hungary","Poland", 
+                        "Slovak Republic")
+
+filtered_data <- Diesel_data[Diesel_data$COUNTRY %in% selected_countries, ]
+
+```
+
+```{r}
+hist(filtered_data$Log_price[filtered_data$INVASION == 0], main = "Distribution of 'VALUE' Before Invasion", xlab = "VALUE", col = "white", breaks = 30)
+abline(v = mean(filtered_data$Log_price[filtered_data$INVASION == 0]), col = "red", lwd = 2)
+
+```
+
+```{r}
+hist(filtered_data$Log_price[filtered_data$INVASION == 1], main = "Distribution of 'VALUE' After Invasion", xlab = "VALUE", col = "grey", breaks = 30)
+abline(v = mean(filtered_data$Log_price[filtered_data$INVASION == 1]), col = "red", lwd = 2)
+
+```
+
+```{r}
+t.test(before_invasion_data$Log_price, after_invasion_data$Log_price)
+```
+
+```{r}
+t.test(filtered_data$Log_price[filtered_data$NEIGHBORS == 1], filtered_data$Log_price[filtered_data$NEIGHBORS == 0], var.equal = TRUE)
+
+```
+
+```{r}
+log_value_of_price = filtered_data$Log_price
+ggplot(filtered_data, aes(x = factor(INVASION), y = log_value_of_price, fill = factor(NEIGHBORS))) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge") +
+  labs(x = "Invasion Status", y = "Mean Oil Prices", fill = "Neighbors") +
+  ggtitle("Mean Oil Prices Before and After Invasion for Neighboring and Non-Neighboring Countries")
+
+```
+
+```{r}
+ggplot(filtered_data, aes(x = factor(INVASION), y = log_value_of_price, fill = factor(NEIGHBORS))) +
+  geom_boxplot() +
+  labs(x = "Invasion Status", y = "Oil Prices", fill = "Neighbors") +
+  ggtitle("Distribution of Oil Prices Before and After Invasion for Neighboring and Non-Neighboring Countries")
+```
+
+```{r}
+ggplot(filtered_data, aes(x = DATE, y = log_value_of_price, color = factor(NEIGHBORS))) +
+  geom_point() +
+  labs(x = "Date", y = "Oil Prices", color = "Neighbors") +
+  ggtitle("Scatter Plot of Oil Prices Over DATE for Neighboring and Non-Neighboring Countries")
+
+```
+
+```{r}
+plot_data <- filtered_data %>% 
+  # Make these categories instead of 0/1 numbers so they look nicer in the plot
+  mutate(INVASION = factor(INVASION, labels = c("Before WAR", "After WAR")),
+         NEIGHBORS = factor(NEIGHBORS, labels = c("NON-NEIGHBORS", "NEIGHBORS"))) %>% 
+  group_by(NEIGHBORS, INVASION) %>% 
+  summarize(mean_duration = mean(PRICE),
+            se_duration = sd(PRICE) / sqrt(n()),
+            upper = mean_duration + (1.96 * se_duration),
+            lower = mean_duration + (-1.96 * se_duration)) 
+
+ggplot(plot_data, aes(x = INVASION, y = mean_duration)) +
+  geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  color = "darkgreen", size = 1) +
+  facet_wrap(vars(NEIGHBORS))
+```
+
+```{r}
+ggplot(plot_data, aes(x = INVASION, y = mean_duration, color = NEIGHBORS)) +
+  geom_pointrange(aes(ymin = lower, ymax = upper), size = 1) + 
+  geom_line(aes(group = NEIGHBORS))
+```
